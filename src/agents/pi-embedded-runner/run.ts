@@ -37,6 +37,7 @@ import {
   isContextOverflowError,
   isFailoverAssistantError,
   isFailoverErrorMessage,
+  isJsonParseStreamError,
   parseImageSizeError,
   parseImageDimensionError,
   isRateLimitAssistantError,
@@ -386,6 +387,7 @@ export async function runEmbeddedPiAgent(
       const MAX_OVERFLOW_COMPACTION_ATTEMPTS = 3;
       let overflowCompactionAttempts = 0;
       let toolResultTruncationAttempted = false;
+      let jsonParseRetryAttempted = false;
       const usageAccumulator = createUsageAccumulator();
       let autoCompactionCount = 0;
       try {
@@ -649,6 +651,16 @@ export async function runEmbeddedPiAgent(
                   error: { kind: "image_size", message: errorText },
                 },
               };
+            }
+            // JSON parse errors from malformed SSE stream data (e.g. unescaped control
+            // characters from Anthropic) are transient — retry once before failing.
+            // See: https://github.com/openclaw/openclaw/issues/14321
+            if (isJsonParseStreamError(errorText) && !jsonParseRetryAttempted) {
+              jsonParseRetryAttempted = true;
+              log.warn(
+                `JSON parse stream error detected for ${provider}/${modelId}; retrying (transient SSE corruption)`,
+              );
+              continue;
             }
             const promptFailoverReason = classifyFailoverReason(errorText);
             if (promptFailoverReason && promptFailoverReason !== "timeout" && lastProfileId) {

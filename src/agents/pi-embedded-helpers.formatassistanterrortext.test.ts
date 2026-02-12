@@ -68,4 +68,19 @@ describe("formatAssistantErrorText", () => {
     const result = formatAssistantErrorText(msg);
     expect(result).toBe(BILLING_ERROR_USER_MESSAGE);
   });
+  it("returns a friendly message for JSON parse stream errors with control characters", () => {
+    const msg = makeAssistantError(
+      "Bad control character in string literal in JSON at position 122 (line 1 column 123)",
+    );
+    const result = formatAssistantErrorText(msg);
+    expect(result).toContain("streaming error");
+    expect(result).toContain("transient");
+    expect(result).not.toContain("Bad control character");
+  });
+  it("returns a friendly message for unexpected token JSON errors", () => {
+    const msg = makeAssistantError("Unexpected token in JSON at position 42");
+    const result = formatAssistantErrorText(msg);
+    expect(result).toContain("streaming error");
+    expect(result).toContain("transient");
+  });
 });

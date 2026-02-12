@@ -378,6 +378,13 @@ export function formatAssistantErrorText(
     );
   }
 
+  if (isJsonParseStreamError(raw)) {
+    return (
+      "Response interrupted by a streaming error (malformed data from the API). " +
+      "This is transient — please try again."
+    );
+  }
+
   const invalidRequest = raw.match(/"type":"invalid_request_error".*?"message":"([^"]+)"/);
   if (invalidRequest?.[1]) {
     return `LLM request rejected: ${invalidRequest[1]}`;
@@ -432,6 +439,13 @@ export function sanitizeUserFacingText(text: string, opts?: { errorContext?: boo
 
     if (isBillingErrorMessage(trimmed)) {
       return BILLING_ERROR_USER_MESSAGE;
+    }
+
+    if (isJsonParseStreamError(trimmed)) {
+      return (
+        "Response interrupted by a streaming error (malformed data from the API). " +
+        "This is transient — please try again."
+      );
     }
 
     if (isRawApiErrorPayload(trimmed) || isLikelyHttpErrorText(trimmed)) {
@@ -548,6 +562,23 @@ export function isMissingToolCallInputError(raw: string): boolean {
     return false;
   }
   return TOOL_CALL_INPUT_MISSING_RE.test(raw) || TOOL_CALL_INPUT_PATH_RE.test(raw);
+}
+
+const JSON_PARSE_STREAM_ERROR_RE =
+  /bad control character in string literal in JSON|unexpected (?:token|end of JSON)|invalid character.*JSON/i;
+
+/**
+ * Detect JSON parse errors from malformed SSE stream data.
+ * The Anthropic SDK occasionally sends SSE data containing unescaped C0 control
+ * characters (U+0000–U+001F), causing JSON.parse() to throw. These errors are
+ * transient and usually succeed on retry.
+ * See: https://github.com/openclaw/openclaw/issues/14321
+ */
+export function isJsonParseStreamError(raw: string): boolean {
+  if (!raw) {
+    return false;
+  }
+  return JSON_PARSE_STREAM_ERROR_RE.test(raw);
 }
 
 export function isBillingAssistantError(msg: AssistantMessage | undefined): boolean {
